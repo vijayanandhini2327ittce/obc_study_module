@@ -1,0 +1,1669 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OBC Mastery — Onboard Computer Deep Dive</title>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=JetBrains+Mono:wght@300;400;500&family=Syne:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #020810;
+    --surface: #060f1e;
+    --card: #0a1628;
+    --border: #0d2545;
+    --accent: #00d4ff;
+    --accent2: #7b2fff;
+    --accent3: #ff6b35;
+    --green: #00ff88;
+    --text: #e8f4fd;
+    --muted: #5a7fa0;
+    --glow: 0 0 20px rgba(0,212,255,0.3);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Syne', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Starfield background */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,0.4) 0%, transparent 100%),
+      radial-gradient(1px 1px at 80% 10%, rgba(255,255,255,0.3) 0%, transparent 100%),
+      radial-gradient(1px 1px at 50% 60%, rgba(255,255,255,0.25) 0%, transparent 100%),
+      radial-gradient(1px 1px at 10% 80%, rgba(255,255,255,0.2) 0%, transparent 100%),
+      radial-gradient(1px 1px at 90% 70%, rgba(255,255,255,0.35) 0%, transparent 100%),
+      radial-gradient(1px 1px at 40% 90%, rgba(255,255,255,0.15) 0%, transparent 100%),
+      radial-gradient(1px 1px at 70% 40%, rgba(255,255,255,0.3) 0%, transparent 100%),
+      radial-gradient(2px 2px at 30% 15%, rgba(0,212,255,0.4) 0%, transparent 100%),
+      radial-gradient(2px 2px at 60% 85%, rgba(123,47,255,0.3) 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; position: relative; z-index: 1; }
+
+  /* Header */
+  header {
+    padding: 40px 0 20px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+
+  header::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 300px; height: 1px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  }
+
+  .mission-badge {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 4px 14px;
+    letter-spacing: 3px;
+    margin-bottom: 16px;
+    animation: pulse-border 2s infinite;
+  }
+
+  @keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 0 rgba(0,212,255,0.4); }
+    50% { box-shadow: 0 0 12px rgba(0,212,255,0.4); }
+  }
+
+  h1 {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(28px, 5vw, 52px);
+    font-weight: 900;
+    line-height: 1.1;
+    background: linear-gradient(135deg, #fff 0%, var(--accent) 50%, var(--accent2) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -1px;
+  }
+
+  .subtitle {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--muted);
+    margin-top: 8px;
+    letter-spacing: 1px;
+  }
+
+  /* Timer bar */
+  .timer-section {
+    margin: 30px 0;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 28px;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+
+  .timer-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    color: var(--accent3);
+    letter-spacing: 2px;
+    white-space: nowrap;
+  }
+
+  .timer-display {
+    font-family: 'Orbitron', monospace;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 4px;
+    text-shadow: var(--glow);
+  }
+
+  .timer-controls { display: flex; gap: 10px; }
+
+  .btn {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    letter-spacing: 1px;
+    padding: 8px 18px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: var(--bg);
+    font-weight: 600;
+  }
+  .btn-primary:hover { box-shadow: 0 0 16px rgba(0,212,255,0.5); transform: translateY(-1px); }
+
+  .btn-danger {
+    background: transparent;
+    color: var(--accent3);
+    border: 1px solid var(--accent3);
+  }
+  .btn-danger:hover { background: rgba(255,107,53,0.1); }
+
+  .progress-overall {
+    flex: 1;
+    min-width: 200px;
+  }
+
+  .prog-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .prog-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .prog-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+    border-radius: 3px;
+    transition: width 0.5s ease;
+  }
+
+  /* Nav tabs */
+  .nav-tabs {
+    display: flex;
+    gap: 4px;
+    margin: 28px 0 20px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 6px;
+    flex-wrap: wrap;
+  }
+
+  .nav-tab {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 1px;
+    padding: 9px 16px;
+    border-radius: 7px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .nav-tab:hover { color: var(--text); background: var(--border); }
+  .nav-tab.active {
+    background: linear-gradient(135deg, rgba(0,212,255,0.15), rgba(123,47,255,0.15));
+    color: var(--accent);
+    border: 1px solid rgba(0,212,255,0.3);
+  }
+
+  /* Sections */
+  .section { display: none; animation: fadeIn 0.3s ease; }
+  .section.active { display: block; }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Module cards */
+  .module-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .module-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 22px;
+    cursor: pointer;
+    transition: all 0.25s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .module-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    border-radius: 12px 0 0 12px;
+  }
+
+  .module-card[data-level="basics"]::before { background: var(--green); }
+  .module-card[data-level="intermediate"]::before { background: var(--accent); }
+  .module-card[data-level="advanced"]::before { background: var(--accent2); }
+  .module-card[data-level="expert"]::before { background: var(--accent3); }
+
+  .module-card:hover {
+    border-color: var(--accent);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 32px rgba(0,212,255,0.12);
+  }
+
+  .module-card.completed { border-color: var(--green); }
+  .module-card.completed::after {
+    content: '✓ DONE';
+    position: absolute;
+    top: 12px; right: 14px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--green);
+    letter-spacing: 1px;
+  }
+
+  .module-num {
+    font-family: 'Orbitron', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+
+  .module-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+
+  .module-meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    gap: 14px;
+    margin-bottom: 10px;
+    flex-wrap: wrap;
+  }
+
+  .tag {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    letter-spacing: 1px;
+    font-weight: 600;
+  }
+
+  .tag-basics { background: rgba(0,255,136,0.1); color: var(--green); }
+  .tag-intermediate { background: rgba(0,212,255,0.1); color: var(--accent); }
+  .tag-advanced { background: rgba(123,47,255,0.1); color: var(--accent2); }
+  .tag-expert { background: rgba(255,107,53,0.1); color: var(--accent3); }
+
+  .module-desc {
+    font-size: 13px;
+    color: #8aa8c4;
+    line-height: 1.6;
+  }
+
+  /* Content panel */
+  .content-panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 24px;
+  }
+
+  .content-header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .content-header h2 {
+    font-family: 'Orbitron', monospace;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  .content-body {
+    padding: 28px 32px;
+    max-height: 600px;
+    overflow-y: auto;
+  }
+
+  .content-body::-webkit-scrollbar { width: 4px; }
+  .content-body::-webkit-scrollbar-track { background: var(--border); }
+  .content-body::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+
+  .lesson-section {
+    margin-bottom: 28px;
+  }
+
+  .lesson-section h3 {
+    font-family: 'Orbitron', monospace;
+    font-size: 13px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .lesson-section h3::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+  }
+
+  .lesson-section p {
+    font-size: 14px;
+    line-height: 1.8;
+    color: #b8d4e8;
+    margin-bottom: 12px;
+  }
+
+  .info-box {
+    background: rgba(0,212,255,0.05);
+    border: 1px solid rgba(0,212,255,0.2);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 14px 0;
+  }
+
+  .info-box.warning {
+    background: rgba(255,107,53,0.05);
+    border-color: rgba(255,107,53,0.2);
+  }
+
+  .info-box.success {
+    background: rgba(0,255,136,0.05);
+    border-color: rgba(0,255,136,0.2);
+  }
+
+  .info-box-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--accent);
+    margin-bottom: 8px;
+    font-weight: 600;
+  }
+
+  .info-box.warning .info-box-label { color: var(--accent3); }
+  .info-box.success .info-box-label { color: var(--green); }
+
+  .info-box p {
+    font-size: 13px;
+    color: #9ab8d0;
+    line-height: 1.7;
+    margin: 0;
+  }
+
+  .code-block {
+    background: #020810;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--green);
+    line-height: 1.8;
+    margin: 14px 0;
+    overflow-x: auto;
+  }
+
+  .spec-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin: 14px 0;
+  }
+
+  .spec-item {
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+  }
+
+  .spec-key {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+
+  .spec-val {
+    font-family: 'Orbitron', monospace;
+    font-size: 14px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  ul.lesson-list {
+    list-style: none;
+    padding: 0;
+  }
+
+  ul.lesson-list li {
+    font-size: 13.5px;
+    color: #b8d4e8;
+    padding: 7px 0 7px 22px;
+    position: relative;
+    line-height: 1.6;
+    border-bottom: 1px solid rgba(13,37,69,0.5);
+  }
+
+  ul.lesson-list li::before {
+    content: '▸';
+    position: absolute;
+    left: 0;
+    color: var(--accent);
+    font-size: 12px;
+  }
+
+  /* Planner */
+  .planner-timeline {
+    position: relative;
+    padding-left: 32px;
+  }
+
+  .planner-timeline::before {
+    content: '';
+    position: absolute;
+    left: 10px; top: 0; bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, var(--green), var(--accent), var(--accent2), var(--accent3));
+  }
+
+  .time-block {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-bottom: 14px;
+    position: relative;
+    transition: all 0.2s;
+  }
+
+  .time-block::before {
+    content: '';
+    position: absolute;
+    left: -26px; top: 22px;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: var(--bg);
+  }
+
+  .time-block.completed-block {
+    border-color: var(--green);
+    background: rgba(0,255,136,0.03);
+  }
+
+  .time-block.completed-block::before {
+    background: var(--green);
+    border-color: var(--green);
+  }
+
+  .time-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+
+  .time-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+
+  .time-desc {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+
+  .done-btn {
+    margin-top: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    padding: 6px 14px;
+    border-radius: 5px;
+    border: 1px solid var(--green);
+    background: transparent;
+    color: var(--green);
+    cursor: pointer;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+  }
+
+  .done-btn:hover { background: rgba(0,255,136,0.1); }
+  .done-btn.marked { background: var(--green); color: var(--bg); }
+
+  /* Quiz section */
+  .quiz-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 16px;
+  }
+
+  .quiz-q {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 16px;
+    line-height: 1.5;
+  }
+
+  .quiz-opts { display: flex; flex-direction: column; gap: 8px; }
+
+  .quiz-opt {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    padding: 11px 16px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.2s;
+  }
+
+  .quiz-opt:hover { border-color: var(--accent); color: var(--accent); }
+  .quiz-opt.correct { border-color: var(--green); color: var(--green); background: rgba(0,255,136,0.08); }
+  .quiz-opt.wrong { border-color: var(--accent3); color: var(--accent3); background: rgba(255,107,53,0.08); }
+
+  .quiz-explain {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: rgba(0,212,255,0.05);
+    border-radius: 8px;
+    font-size: 13px;
+    color: #8aa8c4;
+    display: none;
+    line-height: 1.6;
+  }
+
+  /* Glossary */
+  .glossary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+
+  .glossary-item {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    transition: border-color 0.2s;
+  }
+
+  .glossary-item:hover { border-color: var(--accent); }
+
+  .glo-term {
+    font-family: 'Orbitron', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+
+  .glo-def {
+    font-size: 13px;
+    color: #8aa8c4;
+    line-height: 1.6;
+  }
+
+  /* Responsive */
+  @media (max-width: 600px) {
+    .content-body { padding: 18px; }
+    .timer-section { flex-direction: column; align-items: flex-start; }
+    h1 { font-size: 26px; }
+  }
+
+  .section-heading {
+    font-family: 'Orbitron', monospace;
+    font-size: 11px;
+    letter-spacing: 3px;
+    color: var(--muted);
+    margin-bottom: 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .section-heading::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* Diagram */
+  .arch-diagram {
+    background: #020810;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin: 16px 0;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--accent);
+    line-height: 2.2;
+  }
+
+  .arch-box {
+    display: inline-block;
+    border: 1px solid currentColor;
+    padding: 4px 14px;
+    border-radius: 4px;
+    margin: 2px;
+    font-size: 11px;
+  }
+
+  .arch-arrow {
+    color: var(--muted);
+    display: block;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="mission-badge">SPACE CLUB · OBC SUBSYSTEM · MISSION BRIEFING</div>
+    <h1>ONBOARD COMPUTER</h1>
+    <p class="subtitle">// From Zero to Flight-Ready in 2 Hours //</p>
+  </header>
+
+  <div class="timer-section">
+    <div>
+      <div class="timer-label">⏱ MISSION CLOCK</div>
+      <div class="timer-display" id="timerDisplay">02:00:00</div>
+    </div>
+    <div class="timer-controls">
+      <button class="btn btn-primary" onclick="toggleTimer()" id="timerBtn">START</button>
+      <button class="btn btn-danger" onclick="resetTimer()">RESET</button>
+    </div>
+    <div class="progress-overall">
+      <div class="prog-label">
+        <span>OVERALL PROGRESS</span>
+        <span id="progPct">0%</span>
+      </div>
+      <div class="prog-bar">
+        <div class="prog-fill" id="progFill" style="width:0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="nav-tabs">
+    <button class="nav-tab active" onclick="showSection('planner')">📋 STUDY PLAN</button>
+    <button class="nav-tab" onclick="showSection('modules')">📡 ALL MODULES</button>
+    <button class="nav-tab" onclick="showSection('learn')">🧠 LEARN</button>
+    <button class="nav-tab" onclick="showSection('quiz')">⚡ QUIZ</button>
+    <button class="nav-tab" onclick="showSection('glossary')">📖 GLOSSARY</button>
+  </div>
+
+  <!-- STUDY PLANNER -->
+  <div class="section active" id="section-planner">
+    <div class="section-heading">2-HOUR BATTLE PLAN</div>
+    <div class="planner-timeline">
+
+      <div class="time-block" id="block0">
+        <div class="time-label">00:00 – 00:15 · MODULE 1</div>
+        <div class="time-title">🚀 What IS an OBC? Big Picture</div>
+        <div class="time-desc">Understand what the OBC does in a satellite. Its role, why it's the "brain". Read the OBC intro + architecture section.</div>
+        <button class="done-btn" onclick="markDone(0)">MARK DONE</button>
+      </div>
+
+      <div class="time-block" id="block1">
+        <div class="time-label">00:15 – 00:30 · MODULE 2</div>
+        <div class="time-title">⚙️ Key Hardware Components</div>
+        <div class="time-desc">CPU, memory types (RAM/ROM/Flash), watchdog timer, I/O interfaces. Know what each part does and why it's radiation-hardened.</div>
+        <button class="done-btn" onclick="markDone(1)">MARK DONE</button>
+      </div>
+
+      <div class="time-block" id="block2">
+        <div class="time-label">00:30 – 00:45 · MODULE 3</div>
+        <div class="time-title">🔌 Communication Interfaces</div>
+        <div class="time-desc">UART, SPI, I2C, CAN Bus — how OBC talks to other subsystems. Know which is used for what and the speed tradeoffs.</div>
+        <button class="done-btn" onclick="markDone(2)">MARK DONE</button>
+      </div>
+
+      <div class="time-block" id="block3">
+        <div class="time-label">00:45 – 01:00 · MODULE 4</div>
+        <div class="time-title">💾 Software: RTOS & Flight Software</div>
+        <div class="time-desc">Real-Time Operating Systems (FreeRTOS, RTEMS), task scheduling, fault handling. What runs on the OBC and how.</div>
+        <button class="done-btn" onclick="markDone(3)">MARK DONE</button>
+      </div>
+
+      <div class="time-block" id="block4">
+        <div class="time-label">01:00 – 01:10 · ☕ BREAK</div>
+        <div class="time-title">Rest & Recall</div>
+        <div class="time-desc">Mental reset. Try to recall the 4 key interfaces and what RTOS does. Grab water.</div>
+        <button class="done-btn" onclick="markDone(4)">MARK DONE</button>
+      </div>
+
+      <div class="time-block" id="block5">
+        <div class="time-label">01:10 – 01:25 · MODULE 5</div>
+        <div class="time-title">🛡️ Fault Tolerance & FDIR</div>
+        <div class="time-desc">Radiation effects, SEU, triple modular redundancy, watchdog timers, FDIR (Fault Detection, Isolation & Recovery). Critical for space.</div>
+        <button class="done-btn" onclick="markDone(5)">MARK DONE</button>
+      </div>
+
+      <div class="time-block" id="block6">
+        <div class="time-label">01:25 – 01:40 · MODULE 6</div>
+        <div class="time-title">📡 OBC in the Satellite System</div>
+        <div class="time-desc">How OBC connects with ADCS, EPS, Comms, and payload. The data flow and command/telemetry architecture (C&DH).</div>
+        <button class="done-btn" onclick="markDone(6)">MARK DONE</button>
+      </div>
+
+      <div class="time-block" id="block7">
+        <div class="time-label">01:40 – 01:50 · MODULE 7</div>
+        <div class="time-title">🔬 Real OBC Examples & CubeSat Context</div>
+        <div class="time-desc">GomSpace NanoCom, ISIS OBC, Arduino-based student OBCs. What your club might realistically build or use.</div>
+        <button class="done-btn" onclick="markDone(7)">MARK DONE</button>
+      </div>
+
+      <div class="time-block" id="block8">
+        <div class="time-label">01:50 – 02:00 · REVIEW</div>
+        <div class="time-title">⚡ Final Quiz + Key Terms</div>
+        <div class="time-desc">Hit the Quiz tab — 10 questions. Review any glossary terms you're unsure of. You're ready!</div>
+        <button class="done-btn" onclick="markDone(8)">MARK DONE</button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODULES OVERVIEW -->
+  <div class="section" id="section-modules">
+    <div class="section-heading">ALL LEARNING MODULES</div>
+    <div class="module-grid">
+
+      <div class="module-card" data-level="basics" onclick="openLesson('intro')">
+        <div class="module-num">MODULE 01</div>
+        <div class="module-title">OBC: The Brain of the Satellite</div>
+        <div class="module-meta">
+          <span class="tag tag-basics">BASICS</span>
+          <span>⏱ 15 min</span>
+        </div>
+        <div class="module-desc">What is an OBC, what it does, why every satellite needs one. Architecture overview and role in the mission.</div>
+      </div>
+
+      <div class="module-card" data-level="basics" onclick="openLesson('hardware')">
+        <div class="module-num">MODULE 02</div>
+        <div class="module-title">Hardware Components Deep Dive</div>
+        <div class="module-meta">
+          <span class="tag tag-basics">BASICS</span>
+          <span>⏱ 15 min</span>
+        </div>
+        <div class="module-desc">CPU, RAM, Flash, EEPROM, Watchdog, clock systems. Why space hardware differs from consumer electronics.</div>
+      </div>
+
+      <div class="module-card" data-level="intermediate" onclick="openLesson('interfaces')">
+        <div class="module-num">MODULE 03</div>
+        <div class="module-title">Communication Interfaces</div>
+        <div class="module-meta">
+          <span class="tag tag-intermediate">INTERMEDIATE</span>
+          <span>⏱ 15 min</span>
+        </div>
+        <div class="module-desc">UART, SPI, I2C, CAN Bus, RS-422. How the OBC communicates with every other subsystem on the satellite.</div>
+      </div>
+
+      <div class="module-card" data-level="intermediate" onclick="openLesson('rtos')">
+        <div class="module-num">MODULE 04</div>
+        <div class="module-title">RTOS & Flight Software</div>
+        <div class="module-meta">
+          <span class="tag tag-intermediate">INTERMEDIATE</span>
+          <span>⏱ 15 min</span>
+        </div>
+        <div class="module-desc">Real-Time Operating Systems, task scheduling, priority inversion, flight software architecture, state machines.</div>
+      </div>
+
+      <div class="module-card" data-level="advanced" onclick="openLesson('fdir')">
+        <div class="module-num">MODULE 05</div>
+        <div class="module-title">Fault Tolerance & FDIR</div>
+        <div class="module-meta">
+          <span class="tag tag-advanced">ADVANCED</span>
+          <span>⏱ 15 min</span>
+        </div>
+        <div class="module-desc">Radiation effects, Single Event Upsets, Triple Modular Redundancy, watchdog timers, FDIR strategy.</div>
+      </div>
+
+      <div class="module-card" data-level="advanced" onclick="openLesson('system')">
+        <div class="module-num">MODULE 06</div>
+        <div class="module-title">OBC in the Full Satellite System</div>
+        <div class="module-meta">
+          <span class="tag tag-advanced">ADVANCED</span>
+          <span>⏱ 15 min</span>
+        </div>
+        <div class="module-desc">C&DH subsystem, telemetry/telecommand flow, interfaces with ADCS, EPS, Comms, and payload subsystems.</div>
+      </div>
+
+      <div class="module-card" data-level="expert" onclick="openLesson('examples')">
+        <div class="module-num">MODULE 07</div>
+        <div class="module-title">Real OBC Examples & CubeSat Design</div>
+        <div class="module-meta">
+          <span class="tag tag-expert">APPLIED</span>
+          <span>⏱ 10 min</span>
+        </div>
+        <div class="module-desc">Commercial OBCs, open-source options, what student teams actually build. CubeSat standards (PC/104, CubeSat Kit).</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- LEARN -->
+  <div class="section" id="section-learn">
+    <div class="section-heading">INTERACTIVE LESSONS</div>
+
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:20px;">
+      <button class="btn btn-primary" onclick="showLesson('intro')">01 Intro</button>
+      <button class="btn btn-primary" style="background:rgba(0,212,255,0.2);color:var(--accent)" onclick="showLesson('hardware')">02 Hardware</button>
+      <button class="btn btn-primary" style="background:rgba(0,212,255,0.2);color:var(--accent)" onclick="showLesson('interfaces')">03 Interfaces</button>
+      <button class="btn btn-primary" style="background:rgba(0,212,255,0.2);color:var(--accent)" onclick="showLesson('rtos')">04 RTOS</button>
+      <button class="btn btn-primary" style="background:rgba(123,47,255,0.2);color:var(--accent2)" onclick="showLesson('fdir')">05 FDIR</button>
+      <button class="btn btn-primary" style="background:rgba(123,47,255,0.2);color:var(--accent2)" onclick="showLesson('system')">06 System</button>
+      <button class="btn btn-primary" style="background:rgba(255,107,53,0.2);color:var(--accent3)" onclick="showLesson('examples')">07 Examples</button>
+    </div>
+
+    <!-- Lesson panels -->
+    <div id="lesson-intro" class="content-panel">
+      <div class="content-header">
+        <h2>MODULE 01 · OBC: THE BRAIN OF THE SATELLITE</h2>
+        <span class="tag tag-basics">BASICS · 15 MIN</span>
+      </div>
+      <div class="content-body">
+        <div class="lesson-section">
+          <h3>WHAT IS AN OBC?</h3>
+          <p>The <strong style="color:var(--accent)">Onboard Computer (OBC)</strong> is the central processing unit of a spacecraft. Think of it as the satellite's brain — it coordinates every other subsystem, executes the mission logic, handles data, and keeps everything running reliably in the harshest environment imaginable: outer space.</p>
+          <p>Just like your laptop has a CPU, RAM, and storage — so does an OBC. But it's designed for extreme temperatures (-40°C to +85°C), vacuum, and most critically, radiation from cosmic rays and the Van Allen belts.</p>
+        </div>
+
+        <div class="lesson-section">
+          <h3>CORE RESPONSIBILITIES</h3>
+          <ul class="lesson-list">
+            <li><strong>Command Execution</strong> — receives telecommands from ground station and routes them to the right subsystem</li>
+            <li><strong>Telemetry Collection</strong> — gathers health data (temperature, voltage, current) from all subsystems</li>
+            <li><strong>Data Handling (C&DH)</strong> — stores, compresses, and downlinks mission/science data</li>
+            <li><strong>Attitude Control Interface</strong> — sends/receives data to/from ADCS (Attitude Determination & Control)</li>
+            <li><strong>Power Management Interface</strong> — monitors and controls EPS (Electrical Power System)</li>
+            <li><strong>Fault Management</strong> — detects anomalies and executes recovery procedures</li>
+            <li><strong>Time Keeping</strong> — maintains onboard time reference for scheduling and synchronization</li>
+          </ul>
+        </div>
+
+        <div class="lesson-section">
+          <h3>OBC ARCHITECTURE OVERVIEW</h3>
+          <div class="arch-diagram">
+            <div><span class="arch-box" style="color:var(--accent)">GROUND STATION</span></div>
+            <div class="arch-arrow">↕ Radio Link (Uplink/Downlink)</div>
+            <div><span class="arch-box" style="color:var(--accent3)">COMMS SUBSYSTEM</span></div>
+            <div class="arch-arrow">↕ UART / CAN</div>
+            <div><span class="arch-box" style="color:var(--green); font-size:13px; padding:8px 20px;">🧠 ONBOARD COMPUTER (OBC)</span></div>
+            <div style="color:var(--muted); margin-top:6px;">↙ SPI/I2C ↓ CAN ↘ UART</div>
+            <div>
+              <span class="arch-box" style="color:var(--accent2)">ADCS</span>
+              <span class="arch-box" style="color:var(--accent2)">EPS</span>
+              <span class="arch-box" style="color:var(--accent2)">PAYLOAD</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-box success">
+          <div class="info-box-label">✓ KEY TAKEAWAY</div>
+          <p>The OBC is the single point of intelligence. Every subsystem reports to it, and it makes all mission-level decisions. If the OBC fails, the satellite is lost. That's why fault tolerance is paramount.</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="lesson-hardware" class="content-panel" style="display:none">
+      <div class="content-header">
+        <h2>MODULE 02 · HARDWARE COMPONENTS</h2>
+        <span class="tag tag-basics">BASICS · 15 MIN</span>
+      </div>
+      <div class="content-body">
+        <div class="lesson-section">
+          <h3>THE PROCESSOR (CPU)</h3>
+          <p>Space OBCs typically use <strong style="color:var(--accent)">ARM Cortex-M</strong> or <strong style="color:var(--accent)">LEON3/LEON4</strong> (SPARC-based, ESA's standard) processors. For student CubeSats, ARM Cortex-M4/M7 is extremely common because of its low power, good performance, and wide ecosystem.</p>
+          <div class="spec-grid">
+            <div class="spec-item">
+              <div class="spec-key">TYPICAL CLOCK</div>
+              <div class="spec-val">16–200 MHz</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-key">POWER DRAW</div>
+              <div class="spec-val">50–500 mW</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-key">WORD SIZE</div>
+              <div class="spec-val">32-bit</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-key">ARCH</div>
+              <div class="spec-val">ARM / SPARC</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lesson-section">
+          <h3>MEMORY TYPES — CRITICAL TO KNOW</h3>
+          <ul class="lesson-list">
+            <li><strong style="color:var(--accent)">SRAM (Static RAM)</strong> — Fast volatile memory for runtime data. 256KB–8MB typical. Loses data on power loss.</li>
+            <li><strong style="color:var(--accent)">Flash Memory (NOR/NAND)</strong> — Non-volatile. Stores the flight software and science data. NOR for code execution, NAND for bulk data storage.</li>
+            <li><strong style="color:var(--accent)">EEPROM</strong> — Non-volatile, byte-writable. Stores mission-critical config parameters that must survive resets.</li>
+            <li><strong style="color:var(--accent)">eDRAM / SDRAM</strong> — High-density RAM for data-intensive payloads like cameras. Needs refresh cycles.</li>
+          </ul>
+        </div>
+
+        <div class="lesson-section">
+          <h3>WATCHDOG TIMER</h3>
+          <p>The watchdog timer (WDT) is one of the most important safety features. The flight software must "kick" (reset) the watchdog periodically. If the software hangs or crashes, the watchdog times out and forces a <strong style="color:var(--accent)">hardware reset</strong>, rebooting the OBC automatically — without any human intervention from Earth.</p>
+          <div class="code-block">
+// Pseudo-code: Watchdog pattern
+while (satellite_running) {
+    execute_tasks();
+    kick_watchdog();  // Must happen every ~1–30 sec
+    // If this line is never reached → WDT resets CPU
+}
+          </div>
+        </div>
+
+        <div class="lesson-section">
+          <h3>RADIATION HARDENING</h3>
+          <p>Normal COTS (commercial off-the-shelf) chips can suffer <strong style="color:var(--accent3)">Single Event Upsets (SEUs)</strong> — a cosmic ray flips a bit from 0 to 1. Space-grade chips use:</p>
+          <ul class="lesson-list">
+            <li><strong>Radiation Hardened (RadHard) ICs</strong> — physically designed to resist radiation. Expensive ($$$)</li>
+            <li><strong>Radiation Tolerant (RadTol) COTS</strong> — selected COTS parts tested for space use. More affordable for student teams</li>
+            <li><strong>Error Correcting Code (ECC) Memory</strong> — detects and corrects single-bit errors in RAM</li>
+          </ul>
+        </div>
+
+        <div class="info-box warning">
+          <div class="info-box-label">⚠ SPACE CLUB NOTE</div>
+          <p>For a student CubeSat in Low Earth Orbit (LEO), radiation environment is less severe than deep space. Using a well-chosen ARM microcontroller with software fault tolerance is acceptable and very common.</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="lesson-interfaces" class="content-panel" style="display:none">
+      <div class="content-header">
+        <h2>MODULE 03 · COMMUNICATION INTERFACES</h2>
+        <span class="tag tag-intermediate">INTERMEDIATE · 15 MIN</span>
+      </div>
+      <div class="content-body">
+        <div class="lesson-section">
+          <h3>WHY INTERFACES MATTER</h3>
+          <p>The OBC needs to talk to ADCS, EPS, sensors, the radio, and payload. Each uses a specific protocol. Knowing which protocol to use for what is fundamental to OBC design.</p>
+        </div>
+
+        <div class="lesson-section">
+          <h3>THE FOUR KEY PROTOCOLS</h3>
+
+          <div class="info-box">
+            <div class="info-box-label">UART — UNIVERSAL ASYNC RECEIVER/TRANSMITTER</div>
+            <p>Simple 2-wire serial (TX/RX). Point-to-point only. Used for: GPS modules, debug console, radio comms module. Speed: 9600 bps to ~1 Mbps. Easy to implement — the "hello world" of interfaces.</p>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-label">SPI — SERIAL PERIPHERAL INTERFACE</div>
+            <p>4-wire (MOSI, MISO, CLK, CS). Full duplex, master-slave. Used for: Flash memory, ADCs, sensors. Very fast (10s of Mbps). Requires one CS pin per device — can get complex with many devices.</p>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-label">I2C — INTER-INTEGRATED CIRCUIT</div>
+            <p>2-wire (SDA, SCL). Multi-master, multi-slave. Used for: temperature sensors, IMUs, EPS monitoring. Slower (400 KHz typical) but super efficient for many sensors on one bus. Each device has a unique address.</p>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-label">CAN BUS — CONTROLLER AREA NETWORK</div>
+            <p>Differential 2-wire bus. Highly reliable, built-in error detection. Borrowed from automotive. Used in: higher-end CubeSats for robust inter-subsystem comms. Speed: 1 Mbps. Excellent fault tolerance — can handle wire faults.</p>
+          </div>
+        </div>
+
+        <div class="lesson-section">
+          <h3>QUICK COMPARISON TABLE</h3>
+          <div class="code-block">
+Protocol | Wires | Speed     | Distance | Use Case
+---------|-------|-----------|----------|------------------
+UART     |  2    | ~1 Mbps   | Short    | Serial debug, GPS
+SPI      |  4+   | 10+ Mbps  | Short    | Flash, fast sensors
+I2C      |  2    | 400 KHz   | Short    | Many sensors, EPS
+CAN Bus  |  2    | 1 Mbps    | Medium   | Robust subsystem bus
+RS-422   |  4    | 10 Mbps   | Long     | Long cable runs
+          </div>
+        </div>
+
+        <div class="info-box success">
+          <div class="info-box-label">✓ PRACTICAL TIP</div>
+          <p>Most student CubeSat OBCs use I2C for sensors and EPS, SPI for memory and fast peripherals, and UART for the radio module and debugging. CAN Bus appears in more serious teams or commercial boards.</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="lesson-rtos" class="content-panel" style="display:none">
+      <div class="content-header">
+        <h2>MODULE 04 · RTOS & FLIGHT SOFTWARE</h2>
+        <span class="tag tag-intermediate">INTERMEDIATE · 15 MIN</span>
+      </div>
+      <div class="content-body">
+        <div class="lesson-section">
+          <h3>WHAT IS AN RTOS?</h3>
+          <p>A <strong style="color:var(--accent)">Real-Time Operating System (RTOS)</strong> guarantees that critical tasks complete within a defined time window. In space, missing a deadline can mean losing attitude control or missing a downlink window. Unlike your phone's OS, an RTOS prioritizes determinism over features.</p>
+
+          <div class="spec-grid">
+            <div class="spec-item">
+              <div class="spec-key">COMMON IN CUBESATS</div>
+              <div class="spec-val">FreeRTOS</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-key">ESA STANDARD</div>
+              <div class="spec-val">RTEMS</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-key">NASA PROJECTS</div>
+              <div class="spec-val">VxWorks</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-key">OPEN SOURCE</div>
+              <div class="spec-val">Zephyr OS</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lesson-section">
+          <h3>TASK SCHEDULING</h3>
+          <p>Flight software is split into <strong style="color:var(--accent)">tasks (threads)</strong>, each with a priority and timing requirement. The RTOS scheduler runs the highest-priority ready task. Common OBC tasks:</p>
+          <ul class="lesson-list">
+            <li><strong>Attitude Control Task</strong> — highest priority, runs every 100ms (time-critical!)</li>
+            <li><strong>Telemetry Collection Task</strong> — runs every 1 second, collects housekeeping data</li>
+            <li><strong>Command Handler Task</strong> — runs whenever a new telecommand arrives</li>
+            <li><strong>Health Monitor Task</strong> — checks subsystem health, triggers FDIR if needed</li>
+            <li><strong>Data Storage Task</strong> — writes science/mission data to flash memory</li>
+            <li><strong>Watchdog Kick Task</strong> — must run within watchdog period or system resets</li>
+          </ul>
+        </div>
+
+        <div class="lesson-section">
+          <h3>SATELLITE STATE MACHINE</h3>
+          <p>The OBC software implements a <strong style="color:var(--accent)">Finite State Machine (FSM)</strong> to manage mission modes. This ensures the satellite behaves predictably in every scenario:</p>
+          <div class="code-block">
+LAUNCH_WAIT → DEPLOYMENT_DELAY → SAFE_MODE
+                                      ↓
+                                 NOMINAL_OPS ←→ SCIENCE_MODE
+                                      ↓
+                               EMERGENCY_MODE → RECOVERY
+          </div>
+        </div>
+
+        <div class="info-box">
+          <div class="info-box-label">FLIGHT SOFTWARE LAYERS</div>
+          <p>Hardware Abstraction Layer (HAL) → Board Support Package (BSP) → RTOS Kernel → Device Drivers → Application Layer (Mission Logic). You'll likely work at the Application Layer and Drivers level for your OBC.</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="lesson-fdir" class="content-panel" style="display:none">
+      <div class="content-header">
+        <h2>MODULE 05 · FAULT TOLERANCE & FDIR</h2>
+        <span class="tag tag-advanced">ADVANCED · 15 MIN</span>
+      </div>
+      <div class="content-body">
+        <div class="lesson-section">
+          <h3>THE SPACE ENVIRONMENT IS HOSTILE</h3>
+          <p>In space, you cannot send a technician to fix a problem. The OBC must detect, isolate, and recover from faults <strong style="color:var(--accent)">autonomously</strong>. This is called <strong style="color:var(--accent)">FDIR — Fault Detection, Isolation, and Recovery</strong>.</p>
+        </div>
+
+        <div class="lesson-section">
+          <h3>RADIATION EFFECTS ON ELECTRONICS</h3>
+          <ul class="lesson-list">
+            <li><strong style="color:var(--accent3)">SEU (Single Event Upset)</strong> — a cosmic particle flips a single bit in memory. Most common effect.</li>
+            <li><strong style="color:var(--accent3)">SEL (Single Event Latchup)</strong> — causes a short circuit in CMOS chip. Can permanently destroy the IC if not caught.</li>
+            <li><strong style="color:var(--accent3)">TID (Total Ionizing Dose)</strong> — cumulative radiation degrades transistors over mission lifetime.</li>
+            <li><strong style="color:var(--accent3)">SEE (Single Event Effects)</strong> — umbrella term for all radiation-induced transient faults.</li>
+          </ul>
+        </div>
+
+        <div class="lesson-section">
+          <h3>FAULT TOLERANCE TECHNIQUES</h3>
+
+          <div class="info-box">
+            <div class="info-box-label">TRIPLE MODULAR REDUNDANCY (TMR)</div>
+            <p>Three identical circuits perform the same computation. A majority voter selects the output — if one fails (flips a bit), the other two outvote it. Used in critical data paths and memory. "Two out of three wins."</p>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-label">ERROR CORRECTING CODE (ECC) MEMORY</div>
+            <p>Hardware automatically detects and corrects single-bit errors in RAM. Can detect double-bit errors. Essential for any space RAM. SECDED (Single Error Correct, Double Error Detect) is the most common scheme.</p>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-label">WATCHDOG TIMER (WDT)</div>
+            <p>Software must "kick" the watchdog within a timeout window. If software hangs, WDT forces a hard reset. First line of defense against software crashes in space.</p>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-label">SAFE MODE</div>
+            <p>When too many faults are detected, OBC transitions to Safe Mode: stops non-essential operations, points solar panels at the Sun, and awaits ground commands. Think of it as the satellite "calling for help."</p>
+          </div>
+        </div>
+
+        <div class="lesson-section">
+          <h3>FDIR DECISION TREE</h3>
+          <div class="code-block">
+Anomaly Detected
+    ↓
+Is it recoverable?
+    ├── YES → Attempt automated recovery
+    │           ↓ (recovery fails 3x)
+    │         Escalate to Safe Mode
+    └── NO  → Immediately enter Safe Mode
+                ↓
+            Transmit error telemetry to ground
+                ↓
+            Await ground command to resume
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="lesson-system" class="content-panel" style="display:none">
+      <div class="content-header">
+        <h2>MODULE 06 · OBC IN THE FULL SATELLITE SYSTEM</h2>
+        <span class="tag tag-advanced">ADVANCED · 15 MIN</span>
+      </div>
+      <div class="content-body">
+        <div class="lesson-section">
+          <h3>COMMAND & DATA HANDLING (C&DH)</h3>
+          <p>The OBC IS the C&DH subsystem. Its job is to manage all information flow on the satellite. C&DH sits at the center of every satellite architecture.</p>
+          <ul class="lesson-list">
+            <li><strong>Telecommand (TC)</strong> — commands coming up from ground to the satellite (uplink)</li>
+            <li><strong>Telemetry (TM)</strong> — data going down from satellite to ground (downlink) — housekeeping + science data</li>
+            <li><strong>Packet Protocol</strong> — CCSDS (Consultative Committee for Space Data Systems) is the standard. Defines how packets are structured for TC and TM.</li>
+          </ul>
+        </div>
+
+        <div class="lesson-section">
+          <h3>INTERFACE WITH EACH SUBSYSTEM</h3>
+
+          <div class="info-box">
+            <div class="info-box-label">OBC ↔ ADCS (Attitude Determination & Control)</div>
+            <p>OBC sends attitude commands (desired orientation). ADCS sends back current attitude data (quaternions, angular rates). Typically uses SPI or I2C or CAN Bus. Time-critical — usually the highest-frequency interface.</p>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-label">OBC ↔ EPS (Electrical Power System)</div>
+            <p>OBC monitors battery voltage, solar panel current, power consumption of each subsystem. Can command EPS to switch power rails on/off (e.g. turn off payload during low power). Uses I2C typically.</p>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-label">OBC ↔ COMMS (Radio)</div>
+            <p>OBC passes telecommand packets received from the radio to the command handler. Prepares telemetry packets and sends to radio for downlink. Uses UART or SPI.</p>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-label">OBC ↔ PAYLOAD</div>
+            <p>OBC schedules payload operations (e.g. "start camera at 14:32:00 UTC"). Receives payload data and stores in onboard mass memory. May compress data before downlink.</p>
+          </div>
+        </div>
+
+        <div class="lesson-section">
+          <h3>DATA FLOW IN A PASS</h3>
+          <div class="code-block">
+Satellite enters ground station visibility window
+    ↓
+Radio receives telecommand packet
+    ↓
+OBC decodes command → routes to target subsystem
+    ↓
+Subsystem executes, returns telemetry
+    ↓
+OBC formats telemetry into CCSDS packets
+    ↓
+Radio downlinks packets to ground station
+    ↓
+Satellite passes out of range → wait for next pass
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="lesson-examples" class="content-panel" style="display:none">
+      <div class="content-header">
+        <h2>MODULE 07 · REAL OBC EXAMPLES</h2>
+        <span class="tag tag-expert">APPLIED · 10 MIN</span>
+      </div>
+      <div class="content-body">
+        <div class="lesson-section">
+          <h3>COMMERCIAL CUBESAT OBCs</h3>
+
+          <div class="info-box">
+            <div class="info-box-label">GOMSPACE NPC-OBC — INDUSTRY STANDARD</div>
+            <p>Based on AVR32 microcontroller. Has built-in CAN Bus, I2C, SPI, UART. FreeRTOS. Used in hundreds of CubeSats. Runs the CSP (CubeSat Space Protocol) which is an open networking protocol for CubeSats. Very well documented — good reference for your team.</p>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-label">ISIS OBC — POPULAR IN STUDENT MISSIONS</div>
+            <p>ARM7 based (AT91SAM9G20). SD card for mass storage, multiple interfaces. Used by many universities. ISIS (Innovative Solutions In Space) is a leading nano-satellite company.</p>
+          </div>
+
+          <div class="info-box">
+            <div class="info-box-label">ENDUROSAT OBC — MODERN ARM CORTEX-M7</div>
+            <p>High-performance, radiation-tolerant. 216 MHz processor, 2MB SRAM, 8MB Flash. Popular in 2020s student and commercial missions.</p>
+          </div>
+        </div>
+
+        <div class="lesson-section">
+          <h3>STUDENT / DIY OBC OPTIONS</h3>
+          <ul class="lesson-list">
+            <li><strong>STM32F4/F7</strong> — ARM Cortex-M4/M7. Very popular for student OBCs. Free, excellent ecosystem. Run FreeRTOS easily.</li>
+            <li><strong>Raspberry Pi + Microcontroller</strong> — Some teams use RPi for high-level logic + a microcontroller for real-time tasks. Power-hungry but powerful.</li>
+            <li><strong>Arduino-based</strong> — Simple educational builds. Not suitable for real missions but great for learning.</li>
+            <li><strong>FPGA-based OBCs</strong> — Advanced teams use Xilinx/Intel FPGAs for radiation tolerance + high performance. Steep learning curve.</li>
+          </ul>
+        </div>
+
+        <div class="lesson-section">
+          <h3>CUBESAT FORM FACTOR STANDARDS</h3>
+          <div class="spec-grid">
+            <div class="spec-item">
+              <div class="spec-key">1U CUBESAT</div>
+              <div class="spec-val">10×10×10 cm</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-key">PC/104 STACK</div>
+              <div class="spec-val">90×96 mm boards</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-key">MAX MASS (1U)</div>
+              <div class="spec-val">1.33 kg</div>
+            </div>
+            <div class="spec-item">
+              <div class="spec-key">POWER BUDGET</div>
+              <div class="spec-val">~1–2 W OBC</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="info-box success">
+          <div class="info-box-label">✓ FOR YOUR SPACE CLUB</div>
+          <p>If you're building a CubeSat, seriously consider GomSpace or an STM32-based custom OBC with FreeRTOS. Look at open-source projects like LibreCube and the PyCubed platform for inspiration and starter code. The CubeSat Space Protocol (CSP) is worth learning for inter-subsystem communication.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUIZ -->
+  <div class="section" id="section-quiz">
+    <div class="section-heading">KNOWLEDGE CHECK — 10 QUESTIONS</div>
+
+    <div class="quiz-card">
+      <div class="quiz-q">1. What does OBC stand for and what is its primary role in a satellite?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" onclick="answer(this, false)">Orbital Broadcast Computer — it transmits mission data</button>
+        <button class="quiz-opt" onclick="answer(this, true)">Onboard Computer — the central processing brain that coordinates all subsystems</button>
+        <button class="quiz-opt" onclick="answer(this, false)">Onboard Controller — it only controls the attitude of the satellite</button>
+        <button class="quiz-opt" onclick="answer(this, false)">Operational Bus Computer — it manages the power distribution bus</button>
+      </div>
+      <div class="quiz-explain">The OBC is the Onboard Computer — the satellite's brain. It handles command execution, telemetry, data management, and interfaces with every other subsystem.</div>
+    </div>
+
+    <div class="quiz-card">
+      <div class="quiz-q">2. What is a Watchdog Timer used for?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" onclick="answer(this, false)">To track mission elapsed time for the ground team</button>
+        <button class="quiz-opt" onclick="answer(this, false)">To prevent the satellite from overheating</button>
+        <button class="quiz-opt" onclick="answer(this, true)">To automatically reset the CPU if the software hangs or crashes</button>
+        <button class="quiz-opt" onclick="answer(this, false)">To monitor the battery charge level</button>
+      </div>
+      <div class="quiz-explain">The watchdog timer must be "kicked" (reset) periodically by the flight software. If it isn't kicked (because software crashed), the WDT forces a hardware reset — an autonomous recovery mechanism critical for space.</div>
+    </div>
+
+    <div class="quiz-card">
+      <div class="quiz-q">3. Which communication interface uses only 2 wires and supports multiple devices with unique addresses on the same bus?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" onclick="answer(this, false)">SPI</button>
+        <button class="quiz-opt" onclick="answer(this, false)">UART</button>
+        <button class="quiz-opt" onclick="answer(this, true)">I2C</button>
+        <button class="quiz-opt" onclick="answer(this, false)">RS-422</button>
+      </div>
+      <div class="quiz-explain">I2C (Inter-Integrated Circuit) uses just SDA and SCL wires, supports a multi-device bus where each device has a unique 7-bit address. Perfect for many sensors on a single bus.</div>
+    </div>
+
+    <div class="quiz-card">
+      <div class="quiz-q">4. What is an SEU in the context of space electronics?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" onclick="answer(this, false)">Software Execution Unit — a scheduled task in the RTOS</button>
+        <button class="quiz-opt" onclick="answer(this, false)">System Error Uptime — time between failures</button>
+        <button class="quiz-opt" onclick="answer(this, true)">Single Event Upset — a cosmic particle flips a bit in memory</button>
+        <button class="quiz-opt" onclick="answer(this, false)">Satellite Emergency Upload — a critical software patch</button>
+      </div>
+      <div class="quiz-explain">SEU (Single Event Upset) occurs when a cosmic ray or energetic particle strikes a memory cell and flips its bit from 0 to 1 or vice versa. ECC memory can detect and correct these.</div>
+    </div>
+
+    <div class="quiz-card">
+      <div class="quiz-q">5. What does FDIR stand for?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" onclick="answer(this, false)">Flight Data Interface and Reporting</button>
+        <button class="quiz-opt" onclick="answer(this, true)">Fault Detection, Isolation, and Recovery</button>
+        <button class="quiz-opt" onclick="answer(this, false)">Frequency Domain Interference Rejection</button>
+        <button class="quiz-opt" onclick="answer(this, false)">Full Data Integrity and Redundancy</button>
+      </div>
+      <div class="quiz-explain">FDIR — Fault Detection, Isolation, and Recovery — is the autonomous system by which the OBC identifies a problem, isolates it from the rest of the satellite, and recovers without human intervention.</div>
+    </div>
+
+    <div class="quiz-card">
+      <div class="quiz-q">6. What type of memory is used to store flight software code that must survive power cycles?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" onclick="answer(this, false)">SRAM</button>
+        <button class="quiz-opt" onclick="answer(this, false)">SDRAM</button>
+        <button class="quiz-opt" onclick="answer(this, true)">NOR Flash</button>
+        <button class="quiz-opt" onclick="answer(this, false)">Cache memory</button>
+      </div>
+      <div class="quiz-explain">NOR Flash is non-volatile (survives power loss) and allows in-place code execution (XIP — Execute In Place). It's the standard choice for storing bootloaders and flight software on OBCs.</div>
+    </div>
+
+    <div class="quiz-card">
+      <div class="quiz-q">7. What does "Safe Mode" mean for a satellite?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" onclick="answer(this, false)">The satellite is in a secure encrypted communication mode</button>
+        <button class="quiz-opt" onclick="answer(this, false)">All subsystems are running at maximum power</button>
+        <button class="quiz-opt" onclick="answer(this, true)">Non-essential operations are halted, solar panels oriented to Sun, awaiting ground commands</button>
+        <button class="quiz-opt" onclick="answer(this, false)">The satellite is preparing for re-entry</button>
+      </div>
+      <div class="quiz-explain">Safe Mode is a minimal survival state — the satellite stops non-critical operations, orients for maximum power, and transmits beacons awaiting recovery commands. The satellite's last resort before total loss.</div>
+    </div>
+
+    <div class="quiz-card">
+      <div class="quiz-q">8. In Triple Modular Redundancy (TMR), how is the correct output determined?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" onclick="answer(this, false)">The fastest of three circuits wins</button>
+        <button class="quiz-opt" onclick="answer(this, true)">A majority voter picks the output agreed on by at least 2 of 3 circuits</button>
+        <button class="quiz-opt" onclick="answer(this, false)">All three outputs are averaged together</button>
+        <button class="quiz-opt" onclick="answer(this, false)">The primary circuit always wins unless it fails completely</button>
+      </div>
+      <div class="quiz-explain">TMR uses three identical circuits and a majority voter. If one flips a bit due to radiation, the other two "outvote" it. This masks single-point failures completely and is critical for radiation-tolerant design.</div>
+    </div>
+
+    <div class="quiz-card">
+      <div class="quiz-q">9. What is the CCSDS standard used for in satellite communication?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" onclick="answer(this, false)">It defines the physical RF frequencies used by satellites</button>
+        <button class="quiz-opt" onclick="answer(this, false)">It is a standard for satellite structural design</button>
+        <button class="quiz-opt" onclick="answer(this, true)">It defines the format of telecommand and telemetry data packets</button>
+        <button class="quiz-opt" onclick="answer(this, false)">It is the standard for solar panel efficiency testing</button>
+      </div>
+      <div class="quiz-explain">CCSDS (Consultative Committee for Space Data Systems) defines standardized packet structures for Telecommand (TC) and Telemetry (TM). Using CCSDS allows compatibility with ground stations worldwide.</div>
+    </div>
+
+    <div class="quiz-card">
+      <div class="quiz-q">10. Which interface protocol is most recommended for a robust inter-subsystem bus that handles electrical faults well?</div>
+      <div class="quiz-opts">
+        <button class="quiz-opt" onclick="answer(this, false)">I2C</button>
+        <button class="quiz-opt" onclick="answer(this, false)">UART</button>
+        <button class="quiz-opt" onclick="answer(this, false)">SPI</button>
+        <button class="quiz-opt" onclick="answer(this, true)">CAN Bus</button>
+      </div>
+      <div class="quiz-explain">CAN Bus (Controller Area Network) has built-in error detection, differential signaling (resistant to noise), and can handle bus faults. Originally designed for automotive reliability — ideal for the subsystem bus on more serious CubeSats.</div>
+    </div>
+
+  </div>
+
+  <!-- GLOSSARY -->
+  <div class="section" id="section-glossary">
+    <div class="section-heading">QUICK-REFERENCE GLOSSARY</div>
+    <div class="glossary-grid">
+
+      <div class="glossary-item">
+        <div class="glo-term">OBC</div>
+        <div class="glo-def">Onboard Computer. The central processing unit and brain of the satellite.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">C&DH</div>
+        <div class="glo-def">Command & Data Handling. The subsystem (often the OBC) that manages all information flow.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">RTOS</div>
+        <div class="glo-def">Real-Time Operating System. Guarantees task completion within defined time bounds. FreeRTOS, RTEMS, VxWorks.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">FDIR</div>
+        <div class="glo-def">Fault Detection, Isolation & Recovery. Autonomous fault management system.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">SEU</div>
+        <div class="glo-def">Single Event Upset. Bit flip caused by cosmic radiation hitting a memory cell.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">SEL</div>
+        <div class="glo-def">Single Event Latchup. Radiation causes a chip to short-circuit. Can destroy hardware.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">TMR</div>
+        <div class="glo-def">Triple Modular Redundancy. Three circuits + majority voter to mask single faults.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">ECC</div>
+        <div class="glo-def">Error Correcting Code. Hardware mechanism to detect and fix single-bit memory errors.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">WDT</div>
+        <div class="glo-def">Watchdog Timer. Resets CPU if software doesn't "kick" it within the timeout period.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">CCSDS</div>
+        <div class="glo-def">Consultative Committee for Space Data Systems. Standard for TC/TM packet formats.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">TC / TM</div>
+        <div class="glo-def">Telecommand (uplink: ground → satellite) / Telemetry (downlink: satellite → ground).</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">ADCS</div>
+        <div class="glo-def">Attitude Determination & Control System. Controls satellite orientation. Closely interfaced with OBC.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">EPS</div>
+        <div class="glo-def">Electrical Power System. Manages solar panels, batteries, power distribution. Monitored by OBC.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">UART</div>
+        <div class="glo-def">Universal Async Receiver/Transmitter. Simple 2-wire serial protocol. Point-to-point.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">SPI</div>
+        <div class="glo-def">Serial Peripheral Interface. 4-wire, full duplex, fast (10+ Mbps). Used for Flash, ADCs.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">I2C</div>
+        <div class="glo-def">Inter-Integrated Circuit. 2-wire multi-device bus with unique addresses. 400 KHz typical.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">CAN Bus</div>
+        <div class="glo-def">Controller Area Network. Robust differential bus with built-in error detection. 1 Mbps.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">EEPROM</div>
+        <div class="glo-def">Electrically Erasable Programmable ROM. Non-volatile, byte-writable. Stores config data.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">FSM</div>
+        <div class="glo-def">Finite State Machine. Defines satellite operating modes (Safe, Nominal, Science, Emergency).</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">CSP</div>
+        <div class="glo-def">CubeSat Space Protocol. Open networking protocol for CubeSat inter-subsystem comms. Like TCP/IP for satellites.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">LEO</div>
+        <div class="glo-def">Low Earth Orbit. 160–2000 km altitude. Where most CubeSats operate. Moderate radiation.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">HAL</div>
+        <div class="glo-def">Hardware Abstraction Layer. Software layer that abstracts hardware specifics from application code.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">TID</div>
+        <div class="glo-def">Total Ionizing Dose. Cumulative radiation damage that degrades electronics over the mission life.</div>
+      </div>
+      <div class="glossary-item">
+        <div class="glo-term">PC/104</div>
+        <div class="glo-def">Standard form factor (90×96mm) for CubeSat PCBs allowing modular stacking of subsystem boards.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="height: 40px;"></div>
+</div>
+
+<script>
+  // Timer
+  let timerRunning = false;
+  let totalSeconds = 7200;
+  let timerInterval;
+
+  function toggleTimer() {
+    if (timerRunning) {
+      clearInterval(timerInterval);
+      timerRunning = false;
+      document.getElementById('timerBtn').textContent = 'RESUME';
+    } else {
+      timerInterval = setInterval(() => {
+        if (totalSeconds > 0) {
+          totalSeconds--;
+          updateTimerDisplay();
+        } else {
+          clearInterval(timerInterval);
+          document.getElementById('timerDisplay').textContent = '00:00:00';
+          document.getElementById('timerDisplay').style.color = 'var(--accent3)';
+        }
+      }, 1000);
+      timerRunning = true;
+      document.getElementById('timerBtn').textContent = 'PAUSE';
+    }
+  }
+
+  function resetTimer() {
+    clearInterval(timerInterval);
+    timerRunning = false;
+    totalSeconds = 7200;
+    updateTimerDisplay();
+    document.getElementById('timerBtn').textContent = 'START';
+    document.getElementById('timerDisplay').style.color = 'var(--accent)';
+  }
+
+  function updateTimerDisplay() {
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    document.getElementById('timerDisplay').textContent =
+      String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
+
+  // Section nav
+  function showSection(id) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById('section-' + id).classList.add('active');
+    event.target.classList.add('active');
+  }
+
+  // Lesson viewer
+  function showLesson(id) {
+    document.querySelectorAll('.content-panel').forEach(p => p.style.display = 'none');
+    document.getElementById('lesson-' + id).style.display = 'block';
+  }
+
+  function openLesson(id) {
+    showSection('learn');
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.nav-tab')[2].classList.add('active');
+    setTimeout(() => showLesson(id), 50);
+  }
+
+  // Planner
+  let completedBlocks = 0;
+  const totalBlocks = 9;
+
+  function markDone(idx) {
+    const block = document.getElementById('block' + idx);
+    const btn = block.querySelector('.done-btn');
+    if (!btn.classList.contains('marked')) {
+      btn.classList.add('marked');
+      btn.textContent = '✓ COMPLETED';
+      block.classList.add('completed-block');
+      completedBlocks++;
+      updateProgress();
+    }
+  }
+
+  function updateProgress() {
+    const pct = Math.round((completedBlocks / totalBlocks) * 100);
+    document.getElementById('progFill').style.width = pct + '%';
+    document.getElementById('progPct').textContent = pct + '%';
+  }
+
+  // Quiz
+  function answer(btn, correct) {
+    const card = btn.closest('.quiz-card');
+    if (card.dataset.answered) return;
+    card.dataset.answered = 'true';
+    const opts = card.querySelectorAll('.quiz-opt');
+    opts.forEach(o => o.disabled = true);
+    btn.classList.add(correct ? 'correct' : 'wrong');
+    if (!correct) {
+      opts.forEach(o => { if (o.dataset.correct !== 'false') {} });
+      // Highlight the correct one
+      opts.forEach(o => {
+        if (o.onclick.toString().includes('true')) o.classList.add('correct');
+      });
+    }
+    card.querySelector('.quiz-explain').style.display = 'block';
+  }
+
+  // Default: show first lesson
+  showLesson('intro');
+</script>
+</body>
+</html>
